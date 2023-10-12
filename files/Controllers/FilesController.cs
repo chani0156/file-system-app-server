@@ -1,6 +1,8 @@
-﻿using files.Models;
-using files.Utilities;
+﻿using files.Utilities;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
+using Newtonsoft.Json.Linq;
+
 
 namespace files.Controllers
 {
@@ -8,40 +10,75 @@ namespace files.Controllers
     [ApiController]
     public class FilesController : ControllerBase
     {
-        private readonly List<FileItem> fileSystemData;
-        private readonly ILogger<FilesController> _logger;
-        public FilesController(ILogger<FilesController> logger)
+        private readonly IMemoryCache _cache;
+
+        public FilesController(IMemoryCache cache)
         {
-            _logger = logger;
-            try
-            {
-                string jsonFileName = "tree.json";
-                string jsonFilePath = Path.Combine(AppContext.BaseDirectory, jsonFileName);
-                fileSystemData = FileSystemUtility.ReadJsonFromFile(jsonFilePath);
-            }
-            catch (Exception ex)
-            {
-                throw new Exception("Error reading JSON file.", ex);
-            }
+            _cache = cache;
         }
 
         [HttpGet]
-        public async Task< ActionResult<IEnumerable<FileItem>>> Get()
+        public IActionResult Get()
         {
-            return Ok(fileSystemData);
+            try
+            {
+                List<object> primeNgNodes;
+
+                if (!_cache.TryGetValue("PrimeNgNodes", out primeNgNodes))
+                {
+                    string jsonFileName = "tree.json";
+                    string jsonFilePath = Path.Combine(AppContext.BaseDirectory, jsonFileName);
+                    string jsonContent = System.IO.File.ReadAllText(jsonFilePath);
+                    JArray jsonNodes = JArray.Parse(jsonContent);
+
+                    primeNgNodes = new List<object>();
+
+                    foreach (var jsonNode in jsonNodes)
+                    {
+                        var primeNgNode = FileSystemUtility.ConvertNode(jsonNode);
+                        primeNgNodes.Add(primeNgNode);
+                    }
+
+                    _cache.Set("PrimeNgNodes", primeNgNodes, TimeSpan.FromMinutes(10)); // Cache for 10 minutes
+                }
+
+                return Ok(primeNgNodes);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ex.Message);
+            }
         }
 
-        [HttpGet("search")]
-        public async Task < ActionResult<IEnumerable<object>>> Search(string q)
-        {
-            if (string.IsNullOrWhiteSpace(q))
-            {
-                return BadRequest("Search parameter 'q' is missing.");
-            }
 
-            List<object> result = new List<object>();
-            FileSystemUtility.SearchData(fileSystemData, q, result);
-            return Ok(result);
+        [HttpGet("search")]
+        public IActionResult Search(string q)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(q))
+                {
+                    return BadRequest("Search parameter 'q' is missing.");
+                }
+
+                List<object> primeNgNodes;
+
+                if (!_cache.TryGetValue("PrimeNgNodes", out primeNgNodes))
+                {
+                    return BadRequest("PrimeNgNodes not found in cache.");
+                }
+                List<object> result = new List<object>();
+                FileSystemUtility.SearchData(primeNgNodes, q, result);
+                if (result.Count == 0)
+                {
+                    return NoContent();
+                }
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ex.Message);
+            }
         }
     }
 }
