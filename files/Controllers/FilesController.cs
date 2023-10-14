@@ -1,7 +1,6 @@
 ﻿using files.Utilities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
-using Newtonsoft.Json.Linq;
 
 
 namespace files.Controllers
@@ -11,35 +10,28 @@ namespace files.Controllers
     public class FilesController : ControllerBase
     {
         private readonly IMemoryCache _cache;
+        private readonly FileSystemUtility _fileSystemUtility;
 
-        public FilesController(IMemoryCache cache)
+
+        public FilesController(IMemoryCache cache, FileSystemUtility fileSystemUtility)
         {
             _cache = cache;
+            _fileSystemUtility = fileSystemUtility;
         }
 
+        // GET endpoint to retrieve file system data
         [HttpGet]
         public IActionResult Get()
         {
             try
             {
                 List<object> primeNgNodes;
-
-                if (!_cache.TryGetValue("PrimeNgNodes", out primeNgNodes))
+                // Try to get data from cache
+                if (!_cache.TryGetValue(Constants.Constants.PrimeNgNodesCacheKey, out primeNgNodes))
                 {
-                    string jsonFileName = "tree.json";
-                    string jsonFilePath = Path.Combine(AppContext.BaseDirectory, jsonFileName);
-                    string jsonContent = System.IO.File.ReadAllText(jsonFilePath);
-                    JArray jsonNodes = JArray.Parse(jsonContent);
-
-                    primeNgNodes = new List<object>();
-
-                    foreach (var jsonNode in jsonNodes)
-                    {
-                        var primeNgNode = FileSystemUtility.ConvertNode(jsonNode);
-                        primeNgNodes.Add(primeNgNode);
-                    }
-
-                    _cache.Set("PrimeNgNodes", primeNgNodes, TimeSpan.FromMinutes(10)); // Cache for 10 minutes
+                    primeNgNodes = _fileSystemUtility.GetDataFromSource();
+                     // Cache the data for 10 minutes
+                    _cache.Set(Constants.Constants.PrimeNgNodesCacheKey, primeNgNodes, TimeSpan.FromMinutes(10));
                 }
 
                 return Ok(primeNgNodes);
@@ -50,7 +42,7 @@ namespace files.Controllers
             }
         }
 
-
+        // GET endpoint for searching file system data
         [HttpGet("search")]
         public IActionResult Search(string q)
         {
@@ -63,16 +55,20 @@ namespace files.Controllers
 
                 List<object> primeNgNodes;
 
-                if (!_cache.TryGetValue("PrimeNgNodes", out primeNgNodes))
+                if (!_cache.TryGetValue(Constants.Constants.PrimeNgNodesCacheKey, out primeNgNodes))
                 {
-                    return BadRequest("PrimeNgNodes not found in cache.");
+                    primeNgNodes = _fileSystemUtility.GetDataFromSource(); // Assuming you have a method to get the data
+                    _cache.Set(Constants.Constants.PrimeNgNodesCacheKey, primeNgNodes, TimeSpan.FromMinutes(10)); // Cache for 10 minutes
                 }
+
                 List<object> result = new List<object>();
-                FileSystemUtility.SearchData(primeNgNodes, q, result);
+                _fileSystemUtility.SearchData(primeNgNodes, q, result);
+
                 if (result.Count == 0)
                 {
                     return NoContent();
                 }
+
                 return Ok(result);
             }
             catch (Exception ex)

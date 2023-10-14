@@ -1,4 +1,4 @@
-//var MyAllowSpecificOrigins = "_myAllowSpecificOrigins";
+using files.Utilities;
 
 var builder = WebApplication.CreateBuilder(args);
 var configBuilder = new ConfigurationBuilder()
@@ -21,6 +21,7 @@ builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddScoped<FileSystemUtility>();
 builder.Services.AddMemoryCache();
 var app = builder.Build();
 
